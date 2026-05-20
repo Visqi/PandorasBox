@@ -13,5 +13,5 @@
         "punish",
         "plugin"
     ],
-    "ChangeLog":  "- 7.5 Update"
+    "ChangeLog":  "- Add new feature to disable known glamours in glamour creation"
 }

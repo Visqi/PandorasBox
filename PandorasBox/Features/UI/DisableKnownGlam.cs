@@ -2,8 +2,10 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using ECommons;
 using ECommons.DalamudServices;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 using FFXIVClientStructs.FFXIV.Component.GUI;
+using Lumina.Excel;
 using Lumina.Excel.Sheets;
 using PandorasBox.FeaturesSetup;
 using System;
@@ -21,7 +23,7 @@ namespace PandorasBox.Features.UI
 
         public override void Enable()
         {
-            Svc.AddonLifecycle.RegisterListener(AddonEvent.PostUpdate, "MiragePrismPrismBoxCrystallize", DisableGlams);
+            Svc.AddonLifecycle.RegisterListener(AddonEvent.PostDraw, "MiragePrismPrismBoxCrystallize", DisableGlams);
             Svc.AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, "MiragePrismPrismBoxCrystallize", ReenableNodes);
             base.Enable();
         }
@@ -52,9 +54,8 @@ namespace PandorasBox.Features.UI
                 var list = ((AtkUnitBase*)args.Addon.Address)->GetNodeById(11)->GetAsAtkComponentTreeList();
                 var prismList = ins->Data->PrismBoxItems.ToArray();
                 var catalystList = ins->Data->CrystallizeItems.ToArray().Where(x => x.ItemId > 0).Select(x => x.ItemId > 1_000_000 ? x.ItemId - 1_000_000 : x.ItemId).Take(ins->Data->CrystallizeItemCount);
-                var categories = catalystList.Select(x => Svc.Data.GetExcelSheet<Item>().GetRow(x).EquipSlotCategory.RowId).Distinct().Where(x => x > 0);
 
-                foreach (var (it, i) in catalystList.WithIndex())
+                foreach (var (it, idx) in catalystList.WithIndex())
                 {
                     if (it == 0)
                         continue;
@@ -71,11 +72,28 @@ namespace PandorasBox.Features.UI
                                 continue;
 
                             var itemName = item.Name;
-                            var nodeText = renderer->ButtonTextNode->NodeText.GetText();
+                            var nodeText = renderer->ButtonTextNode->NodeText.GetText().Replace(" ", "");
+                            var s = p;
 
                             if (nodeText == itemName)
                             {
-                                var hasInDresser = prismList.Any(x => x.ItemId == it);
+                                var outfitsWithItem = Svc.Data.GetExcelSheet<MirageStoreSetItem>().Where(x => x.Items.Any(y => y.RowId == item.RowId));
+                                bool allOutfitsCompleted = true;
+                                foreach (var outfit in outfitsWithItem)
+                                {
+                                    var manager = MirageManager.Instance();
+                                    var outfitIndex = manager->PrismBoxItemIds.IndexOf(outfit.RowId);
+                                    if (outfitIndex == -1)
+                                        continue;
+
+                                    var index = outfit.Items.IndexOf(x => x.RowId == item.RowId);
+                                    if (!manager->IsSetSlotUnlocked((uint)outfitIndex, index))
+                                    {
+                                        allOutfitsCompleted = false;
+                                        break;
+                                    }
+                                }
+                                var hasInDresser = prismList.Any(x => x.ItemId == it) && allOutfitsCompleted;
                                 if (hasInDresser)
                                 {
                                     var btnNode = renderer->GetNodeById(4);
@@ -108,4 +126,17 @@ namespace PandorasBox.Features.UI
             base.Disable();
         }
     }
+}
+
+internal static class MirageExtension
+{
+
+    extension(MirageStoreSetItem row)
+    {
+        public RowRef<Item> Set => new(row.ExcelPage.Module, row.RowId, row.ExcelPage.Language);
+        public unsafe Collection<RowRef<Item>> Items => new(row.ExcelPage, parentOffset: row.RowOffset, offset: row.RowOffset, &ItemCtor, size: 11);
+    }
+
+    private static RowRef<Item> ItemCtor(ExcelPage page, uint parentOffset, uint offset, uint i)
+        => new(page.Module, page.ReadUInt32(offset + i * 4), page.Language);
 }
