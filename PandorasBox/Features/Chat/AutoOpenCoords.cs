@@ -112,7 +112,7 @@ internal class AutoOpenCoords : Feature
                 return sameText;
             });
 
-            //if (alreadyInList) filteredOut = true;
+            if (alreadyInList) filteredOut = true;
             if (!filteredOut && Config.FilteredChannels.IndexOf(handler.LogKind) != -1) filteredOut = true;
             if (!filteredOut)
             {
